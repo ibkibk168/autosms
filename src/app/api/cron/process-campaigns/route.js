@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
 
-// ฟังก์ชันสำหรับเรียก API ของ isms.asia
+// ฟังก์ชันสำหรับเรียก A PI ของ isms.asia
 async function callIsmsApi(data) {
-    // --- จุดที่แก้ไข ---
-    // เปลี่ยน URL จาก '.../message-sms/send' เป็น '.../send'
-    // เพื่อให้ตรงกับ API endpoint ที่เป็นไปได้มากที่สุด
+    // ใช้ URL ที่ถูกต้องตามโค้ดตัวอย่าง
     const url = 'https://portal.isms.asia/sms-api/message-sms/send'; 
     try {
         const response = await fetch(url, {
@@ -17,9 +15,7 @@ async function callIsmsApi(data) {
             },
             body: JSON.stringify(data)
         });
-        // เพิ่มการตรวจสอบสถานะของ response ก่อนแปลงเป็น JSON
         if (!response.ok) {
-            // พยายามอ่าน error body เพื่อดูรายละเอียดเพิ่มเติม
             const errorBody = await response.text();
             console.error(`External API responded with status ${response.status}:`, errorBody);
             return { status: 'error', system_message: `API Error: ${response.statusText}`, details: errorBody };
@@ -41,7 +37,7 @@ export async function GET(request) {
   console.log('Cron job started: Processing pending SMS messages...');
 
   try {
-    // 2. ดึงข้อความที่ยังรอดำเนินการ (pending) มาจำนวนหนึ่ง (เช่น 50 ข้อความ)
+    // 2. ดึงข้อความที่ยังรอดำเนินการ (pending)
     const BATCH_SIZE = 50;
     const { data: pendingMessages, error: fetchError } = await supabase
       .from('sms_messages')
@@ -58,19 +54,27 @@ export async function GET(request) {
 
     console.log(`Found ${pendingMessages.length} messages to process.`);
 
-    // 3. วนลูปส่ง SMS ทีละข้อความใน Batch ที่ดึงมา
+    // 3. วนลูปส่ง SMS ทีละข้อความ
     for (const msg of pendingMessages) {
-      const apiResult = await callIsmsApi({
+      
+      // --- จุดที่แก้ไข ---
+      // สร้าง Payload ให้ตรงกับโค้ดตัวอย่างที่ให้มา
+      const payload = {
         recipient: msg.recipient,
         sender_name: msg.sender_name,
         message: msg.message
-      });
+      };
 
-      // 4. อัปเดตสถานะของข้อความตามผลลัพธ์ที่ได้
+      // Log เพื่อให้เห็นว่าเราส่งอะไรไป
+      console.log('Sending payload to ISMS API:', JSON.stringify(payload));
+
+      const apiResult = await callIsmsApi(payload);
+
+      // 4. อัปเดตสถานะของข้อความตามผลลัพธ์
       if (apiResult.status === 'success') {
         await supabase.from('sms_messages')
           .update({
-            status: 'sent', // <-- อัปเดตสถานะ
+            status: 'sent',
             sms_uuid: apiResult.data.uuid,
             ref_no: apiResult.data.ref_no,
             status_code: apiResult.data.status,
@@ -80,7 +84,7 @@ export async function GET(request) {
       } else {
         await supabase.from('sms_messages')
           .update({ 
-            status: 'failed', // <-- อัปเดตสถานะ
+            status: 'failed',
             status_code: 2 // หรือรหัส Error อื่นๆ ตามที่ API คืนค่ามา
           })
           .eq('id', msg.id);
