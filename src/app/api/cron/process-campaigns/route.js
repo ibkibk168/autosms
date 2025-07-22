@@ -1,9 +1,23 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
 
-// ฟังก์ชันสำหรับเรียก A PI ของ isms.asia
+/**
+ * ฟังก์ชันสำหรับปรับรูปแบบเบอร์โทรศัพท์ให้อยู่ในรูปแบบ E.164 (สำหรับเบอร์ไทย)
+ * เช่น 081-234-5678 -> 66812345678
+ */
+function normalizeThaiPhoneNumber(phone) {
+  // 1. ลบตัวอักษรที่ไม่ใช่ตัวเลขทั้งหมด
+  let digits = phone.replace(/\D/g, '');
+  // 2. ถ้าขึ้นต้นด้วย 0 ให้ตัด 0 ออกแล้วเติม 66
+  if (digits.startsWith('0')) {
+    return '66' + digits.substring(1);
+  }
+  // 3. ถ้าไม่ได้ขึ้นต้นด้วย 0 (อาจจะเป็น 66 อยู่แล้ว) ก็ให้คืนค่าเดิม
+  return digits;
+}
+
+// ฟังก์ชันสำหรับเรียก API ของ isms.asia
 async function callIsmsApi(data) {
-    // ใช้ URL ที่ถูกต้องตามโค้ดตัวอย่าง
     const url = 'https://portal.isms.asia/sms-api/message-sms/send'; 
     try {
         const response = await fetch(url, {
@@ -17,7 +31,8 @@ async function callIsmsApi(data) {
         });
         if (!response.ok) {
             const errorBody = await response.text();
-            console.error(`External API responded with status ${response.status}:`, errorBody);
+            // Log รายละเอียดของ Error ที่ได้รับกลับมา
+            console.error(`External API responded with status ${response.status} for recipient ${data.recipient}:`, errorBody);
             return { status: 'error', system_message: `API Error: ${response.statusText}`, details: errorBody };
         }
         return await response.json();
@@ -57,16 +72,16 @@ export async function GET(request) {
     // 3. วนลูปส่ง SMS ทีละข้อความ
     for (const msg of pendingMessages) {
       
-      // --- จุดที่แก้ไข ---
-      // สร้าง Payload ให้ตรงกับโค้ดตัวอย่างที่ให้มา
+      const normalizedRecipient = normalizeThaiPhoneNumber(msg.recipient);
+
       const payload = {
-        recipient: msg.recipient,
+        recipient: normalizedRecipient, // <-- ใช้เบอร์ที่ปรับรูปแบบแล้ว
         sender_name: msg.sender_name,
         message: msg.message
       };
 
       // Log เพื่อให้เห็นว่าเราส่งอะไรไป
-      console.log('Sending payload to ISMS API:', JSON.stringify(payload));
+      console.log(`Sending to ${normalizedRecipient} with sender "${msg.sender_name}"`);
 
       const apiResult = await callIsmsApi(payload);
 
