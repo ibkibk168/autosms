@@ -72,15 +72,25 @@ export async function GET(request) {
     // 3. วนลูปส่ง SMS ทีละข้อความ
     for (const msg of pendingMessages) {
       
+      // --- จุดที่แก้ไข ---
+      // ตรวจสอบว่ามี sender_name หรือไม่
+      if (!msg.sender_name) {
+        console.error(`Skipping message ID ${msg.id} due to missing sender_name.`);
+        // อัปเดตสถานะเป็น failed เพื่อไม่ให้วนกลับมาทำอีก
+        await supabase.from('sms_messages')
+          .update({ status: 'failed', status_code: 'MISSING_SENDER' })
+          .eq('id', msg.id);
+        continue; // ข้ามไปทำข้อความถัดไป
+      }
+
       const normalizedRecipient = normalizeThaiPhoneNumber(msg.recipient);
 
       const payload = {
-        recipient: normalizedRecipient, // <-- ใช้เบอร์ที่ปรับรูปแบบแล้ว
+        recipient: normalizedRecipient,
         sender_name: msg.sender_name,
         message: msg.message
       };
 
-      // Log เพื่อให้เห็นว่าเราส่งอะไรไป
       console.log(`Sending to ${normalizedRecipient} with sender "${msg.sender_name}"`);
 
       const apiResult = await callIsmsApi(payload);
